@@ -1,0 +1,23 @@
+name: Mise à jour GeoJSON
+
+on:
+  schedule:
+    - cron: "0 6,18 * * *"
+
+jobs:
+  fetch-and-save:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - run: python script.py
+      - run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add air.geojson
+          git commit -m "Mise à jour GeoJSON automatique"
+          git push || echo "Rien à pousser"
