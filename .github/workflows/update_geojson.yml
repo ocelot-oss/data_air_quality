@@ -3,7 +3,7 @@ name: Mise à jour GeoJSON
 on:
   schedule:
     - cron: "0 6,18 * * *"
-
+  workflow_dispatch:  # <- permet de lancer manuellement
 jobs:
   fetch-and-save:
     runs-on: ubuntu-latest
