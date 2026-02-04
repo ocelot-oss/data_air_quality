@@ -2,22 +2,41 @@ name: Mise à jour GeoJSON
 
 on:
   schedule:
-    - cron: "0 6,18 * * *"
-  workflow_dispatch:  # <- permet de lancer manuellement
+    - cron: "0 6,18 * * *"  # deux fois par jour
+  workflow_dispatch:  # permet un lancement manuel
+
 jobs:
   fetch-and-save:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      # Récupérer le repo
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      # Installer Python
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - run: pip install requests
-      - run: python3 data_air_quality.py
-      - run: |
+
+      # Installer requests
+      - name: Installer requests
+        run: pip install requests
+
+      # Exécuter le script Python
+      - name: Exécuter le script
+        run: python3 data_air_quality.py
+
+      # Vérifier que le fichier a été créé
+      - name: Lister les fichiers
+        run: ls -l
+
+      # Commit et push le fichier, même s'il est nouveau
+      - name: Commit & push air.geojson
+        run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add air.geojson
-          git commit -m "Mise à jour GeoJSON automatique"
-          git push || echo "Rien à pousser"
+          git commit -m "Mise à jour GeoJSON automatique" || echo "Rien à committer"
+          git push
