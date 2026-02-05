@@ -21,7 +21,8 @@ jobs:
       - name: Installer dépendances
         run: |
           python -m pip install --upgrade pip
-          pip install requests pandas
+          pip install requests pandas beautifulsoup4
+
 
       - name: Exécuter le script
         run: python3 data_air_quality.py
