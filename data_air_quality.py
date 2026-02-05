@@ -34,7 +34,7 @@ def download_stations():
     return df
 
 def generate_file_id(date_debut, date_fin):
-    url = f"https://www.geodair.fr/api-ext/statistique/export?zas=FR84ZAR03&famille_polluant=2000&date_debut={date_debut}&date_fin={date_fin}&type_donnee=a1"
+    url = f"https://www.geodair.fr/api-ext/statistique/export?zas=FR84ZAR03&famille_polluant=2000&date_debut={date_debut}&date_fin={date_fin}&type_donnee=a2"
     r = requests.get(url, headers={"apikey": API_KEY})
     r.raise_for_status()
     file_id = r.text.strip()
@@ -122,6 +122,7 @@ else:
         json.dump(geojson, f, ensure_ascii=False, indent=2)
 
     print("GeoJSON généré avec succès !")
+
 
 
 
