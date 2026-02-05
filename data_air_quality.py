@@ -1,143 +1,127 @@
 import requests
 import pandas as pd
 import io
-import time
-from datetime import datetime, timedelta
 import json
+from datetime import datetime, timedelta
+import time
 
+# === CONFIG ===
 API_KEY = "ZjdpgWC8ZtAIWvBiZDKUFe7KRMBLorr0"
+STATIONS_CSV_URL = "https://www.geodair.fr/api-ext/stations/export"
+JOURS_MAX = 7        # nombre maximum de jours à vérifier si aucune donnée
+SLEEP_BETWEEN_TRIES = 5  # secondes à attendre entre chaque tentative de téléchargement
 
-# CSV des stations (coordonnées)
-STATIONS_URL = "https://www.geodair.fr/api-ext/station/export"
-STATISTIQUE_EXPORT_URL = "https://www.geodair.fr/api-ext/statistique/export"
-STATISTIQUE_DOWNLOAD_URL = "https://www.geodair.fr/api-ext/download"
+# === FONCTIONS UTILES ===
 
-JOURS_MAX = 7  # Nombre maximum de jours à remonter si pas de mesures
-
-# ------------------------------
-# Fonctions utilitaires
-# ------------------------------
-
-def get_period(days=1):
+def get_period(days=1, end=None):
     """
-    Renvoie date_debut et date_fin pour la période demandée
+    Renvoie date_debut et date_fin pour la période demandée.
+    Si end=None, prend hier comme date de fin pour éviter données incomplètes.
     """
-    fin = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    if end is None:
+        fin = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    else:
+        fin = end
     debut = fin - timedelta(days=days)
     return debut.strftime("%d/%m/%Y %H:%M"), fin.strftime("%d/%m/%Y %H:%M")
 
 def download_stations():
     print("Téléchargement des stations...")
-    headers = {"accept": "text/csv; charset=UTF-8", "apikey": API_KEY}
-    r = requests.get(STATIONS_URL, headers=headers)
+    r = requests.get(STATIONS_CSV_URL, headers={"apikey": API_KEY})
+    r.encoding = 'utf-8'
     df = pd.read_csv(io.StringIO(r.text), sep=";")
-    df.columns = df.columns.str.strip()
     print(f"Lignes stations récupérées: {len(df)}")
     return df
 
-def generate_stat_file(date_debut, date_fin, zas="FR84ZAR03", famille_polluant=2000, type_donnee="a1"):
-    """
-    Appelle l'API pour générer le fichier statistiques et retourne l'identifiant.
-    """
-    headers = {"accept": "text/csv; charset=UTF-8", "apikey": API_KEY}
-    params = {
-        "zas": zas,
-        "famille_polluant": famille_polluant,
-        "date_debut": date_debut,
-        "date_fin": date_fin,
-        "type_donnee": type_donnee
-    }
-    r = requests.get(STATISTIQUE_EXPORT_URL, headers=headers, params=params)
+def generate_file_id(date_debut, date_fin):
+    url = f"https://www.geodair.fr/api-ext/statistique/export?zas=FR84ZAR03&famille_polluant=2000&date_debut={date_debut}&date_fin={date_fin}&type_donnee=a1"
+    r = requests.get(url, headers={"apikey": API_KEY})
     r.raise_for_status()
-    file_id = r.text.strip()  # l'API renvoie l'identifiant du fichier
-    print(f"ID du fichier généré: {file_id}")
+    file_id = r.text.strip()
+    print("ID du fichier généré:", file_id)
     return file_id
 
-def download_csv_from_id(file_id, max_attempts=10, delay=1):
-    """
-    Télécharge le CSV depuis l'API en utilisant l'identifiant généré.
-    Attend que le CSV contienne réellement des mesures.
-    """
-    headers = {"accept": "text/csv; charset=UTF-8", "apikey": API_KEY}
-    
-    for attempt in range(max_attempts):
-        r = requests.get(STATISTIQUE_DOWNLOAD_URL, headers=headers, params={"id": file_id})
-        text = r.text.strip()
-        
-        # Vérifier que le CSV contient plus qu'un simple ID
-        if text.count("\n") > 1:
-            try:
-                df = pd.read_csv(io.StringIO(text), sep=";")
-                df.columns = df.columns.str.strip()
-                print(f"Lignes mesures récupérées: {len(df)}")
-                return df
-            except pd.errors.EmptyDataError:
-                pass  # fichier encore incomplet
-        
-        print(f"Fichier non prêt, tentative {attempt+1}/{max_attempts}...")
-        time.sleep(delay)
-    
+def download_csv_from_id(file_id, max_tries=10):
+    download_url = f"https://www.geodair.fr/api-ext/download?id={file_id}"
+    for i in range(1, max_tries + 1):
+        r = requests.get(download_url, headers={"apikey": API_KEY})
+        r.encoding = 'utf-8'
+        # Si le CSV contient plus de quelques caractères, on suppose qu'il est prêt
+        if len(r.text) > 200:
+            df = pd.read_csv(io.StringIO(r.text), sep=";")
+            return df
+        else:
+            print(f"Fichier non prêt, tentative {i}/{max_tries}...")
+            time.sleep(SLEEP_BETWEEN_TRIES)
     print("Aucune mesure récupérée après plusieurs tentatives.")
-    return pd.DataFrame()
+    return pd.DataFrame()  # retour vide si jamais rien
 
-# ------------------------------
-# Script principal
-# ------------------------------
+# === SCRIPT PRINCIPAL ===
 
 stations = download_stations()
+df_final = pd.DataFrame()
 
-mesures = pd.DataFrame()
-jours = 1
-while jours <= JOURS_MAX and mesures.empty:
-    date_debut, date_fin = get_period(days=jours)
+# Vérifier jusqu'à JOURS_MAX derniers jours pour trouver des mesures
+for days_back in range(1, JOURS_MAX + 1):
+    date_debut, date_fin = get_period(days=1, end=datetime.now() - timedelta(days=days_back))
     print(f"Tentative d'export pour la période {date_debut} -> {date_fin}...")
-    
-    file_id = generate_stat_file(date_debut, date_fin)
-    mesures = download_csv_from_id(file_id)
-    
-    if mesures.empty:
-        jours += 1
 
-if mesures.empty:
+    file_id = generate_file_id(date_debut, date_fin)
+    df_mesures = download_csv_from_id(file_id)
+
+    if df_mesures.empty:
+        print("Aucune mesure pour cette période.")
+        continue
+
+    # Vérifier la colonne identifiant station
+    # Chercher une colonne commune : souvent "Code" ou "Code station"
+    if "Code" in df_mesures.columns:
+        merge_col_mesures = "Code"
+    elif "Code station" in df_mesures.columns:
+        merge_col_mesures = "Code station"
+    else:
+        print("Impossible de trouver la colonne identifiant station dans mesures.")
+        continue
+
+    df_merged = df_mesures.merge(
+        stations,
+        left_on=merge_col_mesures,
+        right_on="Code",
+        how="left"
+    )
+
+    if df_merged.empty:
+        print("Merge vide, aucune correspondance avec les stations.")
+        continue
+
+    df_final = pd.concat([df_final, df_merged], ignore_index=True)
+    break  # on prend la première période où il y a des mesures
+
+if df_final.empty:
     print("Aucune mesure disponible dans les derniers jours. GeoJSON non généré.")
-    exit(0)
-
-# Vérifier le nom exact des colonnes pour merge
-# Exemple : 'Code station' ou 'Code'
-if 'Code' in mesures.columns:
-    merge_left = 'Code'
-elif 'code_station' in mesures.columns:
-    merge_left = 'code_station'
 else:
-    print("Impossible de trouver la colonne identifiant station dans mesures.")
-    exit(1)
+    # Création GeoJSON
+    features = []
+    for _, row in df_final.iterrows():
+        if pd.notnull(row.get("Longitude")) and pd.notnull(row.get("Latitude")):
+            features.append({
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [row["Longitude"], row["Latitude"]],
+                },
+                "properties": {col: row[col] for col in df_final.columns if col not in ["Longitude", "Latitude"]}
+            })
 
-if 'Code' not in stations.columns:
-    print("Impossible de trouver la colonne Code dans stations.")
-    exit(1)
+    geojson = {
+        "type": "FeatureCollection",
+        "features": features
+    }
 
-df = mesures.merge(stations, left_on=merge_left, right_on='Code', how='left')
+    with open("air.geojson", "w", encoding="utf-8") as f:
+        json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-# Créer le GeoJSON
-features = []
-for _, row in df.iterrows():
-    if pd.notnull(row.get("Longitude")) and pd.notnull(row.get("Latitude")):
-        feature = {
-            "type": "Feature",
-            "properties": {k: row[k] for k in df.columns if k not in ["Longitude", "Latitude"]},
-            "geometry": {
-                "type": "Point",
-                "coordinates": [row["Longitude"], row["Latitude"]]
-            }
-        }
-        features.append(feature)
-
-geojson = {"type": "FeatureCollection", "features": features}
-
-with open("air.geojson", "w", encoding="utf-8") as f:
-    json.dump(geojson, f, ensure_ascii=False, indent=2)
-
-print(f"GeoJSON généré avec {len(features)} points.")
+    print("GeoJSON généré avec succès !")
 
 
 
