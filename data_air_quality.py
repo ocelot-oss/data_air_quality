@@ -216,22 +216,7 @@ with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
 
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations avec descriptions HTML complètes")
-```
 
----
-
-## **Changements principaux :**
-
-1. ✅ **Description HTML complète** avec tableau stylé
-2. ✅ **Nettoyage des unités** (`Âµg-m3` → `µg/m3`)
-3. ✅ **Propriétés simplifiées** (seulement `name` et `description` pour uMap)
-4. ✅ **Fix du warning datetime** (`datetime.now(datetime.UTC)`)
-
----
-
-**Lance ce script, commit/push, et réimporte dans uMap avec l'URL :**
-```
-https://raw.githubusercontent.com/ocelot-oss/data_air_quality/main/air_data_gouv.geojson
 
 
 
