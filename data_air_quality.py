@@ -6,86 +6,89 @@ from datetime import datetime, timedelta
 
 # === CONFIG ===
 
-# Base URL du stockage des fichiers E2
+# base URL des fichiers E2
 BASE_DATA_URL = (
     "https://object.infra.data.gouv.fr/"
     "ineris-prod/lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/"
 )
 
-STATIONS_CSV_LOCAL = "stations.csv"   # ton fichier local de stations
+STATIONS_CSV = "stations.csv"        # ton fichier local
 OUTPUT_GEOJSON = "air_data_gouv.geojson"
 
-# Polluants que tu veux inclure (facultatif, sinon laisse vide)
-WANTED_POLLUTANTS = []  # [] = toutes
+# polluants que tu veux garder (vide = tous)
+WANTED_POLLUTANTS = []
 
-# === FONCTIONS UTILES ===
-
-def build_e2_url_for_date(date: datetime):
+def build_e2_url(date: datetime):
     """
-    Construit l'URL du fichier E2 correspondant à la date donnée.
-    Par convention, les fichiers s'appellent FR_E2_YYYY-MM-DD.csv
-    et sont dans un sous‑répertoire 'YYYY'.
+    Construire l’URL du CSV E2 pour une date donnée
+    en supposant le schéma FR_E2_YYYY-MM-DD.csv
     """
     date_str = date.strftime("%Y-%m-%d")
     year_str = date.strftime("%Y")
     filename = f"FR_E2_{date_str}.csv"
     return f"{BASE_DATA_URL}{year_str}/{filename}"
 
-def download_e2_csv(url):
-    """Télécharge et parse le CSV si disponible."""
-    print(f"Téléchargement du fichier E2 : {url}")
+def download_csv(url):
+    """
+    Télécharge le fichier et retourne un DataFrame
+    """
+    print(f"Téléchargement du fichier : {url}")
     r = requests.get(url)
     if r.status_code == 200 and len(r.text) > 100:
         try:
             df = pd.read_csv(io.StringIO(r.text), sep=";")
-            print(f"CSV chargé ({len(df)} lignes).")
+            print("CSV chargé :", len(df), "lignes")
             return df
         except Exception as e:
-            print("Erreur lecture CSV :", e)
+            print("Erreur lors de la lecture du CSV:", e)
             return pd.DataFrame()
     else:
-        print(f"Fichier non trouvé ou vide (status {r.status_code}).")
+        print("Fichier non trouvé ou trop petit (status", r.status_code, ")")
         return pd.DataFrame()
 
-# === SCRIPT PRINCIPAL ===
+# ============ LOGIQUE PRINCIPALE ============
 
-# 1) Déterminer la date cible (hier)
-target_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-url_e2 = build_e2_url_for_date(target_date)
+# on commence avec "hier" pour s'assurer que le fichier est complet
+target_date = datetime.utcnow().date() - timedelta(days=1)
+df_measures = download_csv(build_e2_url(datetime.combine(target_date, datetime.min.time())))
 
-df_measures = download_e2_csv(url_e2)
+# si vide, tenter les jours précédents (jusqu'à 3 jours max)
+tries = 3
+i = 1
+while df_measures.empty and i < tries:
+    test_date = target_date - timedelta(days=i)
+    df_measures = download_csv(build_e2_url(datetime.combine(test_date, datetime.min.time())))
+    i += 1
 
 if df_measures.empty:
-    print("Aucun fichier E2 valide trouvé pour la date cible.")
+    print("❌ Aucun fichier E2 valide trouvé sur les derniers jours.")
     exit(1)
 
-# 2) Filtrer polluants si demandé
+# filtrer polluants si spécifié
 if WANTED_POLLUTANTS:
     df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
 
 if df_measures.empty:
-    print("Aucune mesure après filtrage des polluants.")
+    print("❌ Aucune donnée après filtrage des polluants")
     exit(1)
 
-# 3) Lire le fichier local des stations (coordonnées)
-df_stations = pd.read_csv(STATIONS_CSV_LOCAL, sep=";")
-
-# Normaliser la colonne du code de station pour merger
+# lire stations locales
+df_stations = pd.read_csv(STATIONS_CSV, sep=";")
 df_stations = df_stations.rename(columns={"Code": "code_station"})
 
-# 4) Fusionner mesures + coordonnées
+# merge mesures + coords
 df_merged = df_measures.merge(
     df_stations,
-    left_on="CodeStation",
-    right_on="code_station",
+    left_on="code site",
+    right_on="Code",
     how="left"
 )
 
 if df_merged.empty:
-    print("Aucune correspondance entre mesures et stations.")
+    print("❌ Aucune correspondance entre mesures et stations.")
     exit(1)
 
-# 5) Générer GeoJSON
+# création GeoJSON
 features = []
 for _, row in df_merged.iterrows():
     lon = row.get("Longitude")
@@ -93,29 +96,21 @@ for _, row in df_merged.iterrows():
     if pd.notna(lon) and pd.notna(lat):
         features.append({
             "type": "Feature",
-            "geometry": {
-                "type": "Point",
-                "coordinates": [lon, lat],
-            },
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": {
                 "code_station": row["CodeStation"],
                 "polluant": row["Polluant"],
-                "date": row["Date"],
+                "date": row.get("Date") or row.get("Date/Heure") or "",
                 "concentration": row.get("Concentration"),
-                "nom_station": row.get("Nom station"),
-                "commune": row.get("Commune"),
             }
         })
 
-geojson = {
-    "type": "FeatureCollection",
-    "features": features
-}
-
+geojson = {"type": "FeatureCollection", "features": features}
 with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-print("✅ GeoJSON généré avec succès !")
+print("✅ GeoJSON généré :", OUTPUT_GEOJSON)
+
 
 
 
