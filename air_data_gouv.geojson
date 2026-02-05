@@ -6,54 +6,41 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
+          6.87,
+          45.9225
+        ]
+      },
+      "properties": {
+        "name": "CHAMONIX",
+        "description": "<div style=\"font-family: Arial, sans-serif;\">\n<h3 style=\"margin: 0 0 10px 0; color: #2c3e50;\">CHAMONIX</h3>\n<p style=\"margin: 5px 0;\"><strong>Code station:</strong> FR33120</p>\n<p style=\"margin: 5px 0;\"><strong>Date:</strong> 2026/02/04</p>\n<p style=\"margin: 10px 0 5px 0;\"><strong>5 polluants mesurés:</strong></p>\n<table style=\"width: 100%; border-collapse: collapse; font-size: 13px;\">\n<thead>\n<tr style=\"background: #ecf0f1; border-bottom: 2px solid #bdc3c7;\">\n<th style=\"padding: 8px; text-align: left;\">Polluant</th>\n<th style=\"padding: 8px; text-align: center;\">Moyenne</th>\n<th style=\"padding: 8px; text-align: center;\">Max</th>\n<th style=\"padding: 8px; text-align: center;\">Min</th>\n</tr>\n</thead>\n<tbody>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NO</strong></td>\n<td style=\"padding: 6px; text-align: center;\">4.15 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">21.0</td>\n<td style=\"padding: 6px; text-align: center;\">0.5</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NO2</strong></td>\n<td style=\"padding: 6px; text-align: center;\">18.72 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">56.6</td>\n<td style=\"padding: 6px; text-align: center;\">2.1</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NOX as NO2</strong></td>\n<td style=\"padding: 6px; text-align: center;\">25.03 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">85.4</td>\n<td style=\"padding: 6px; text-align: center;\">2.8</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>O3</strong></td>\n<td style=\"padding: 6px; text-align: center;\">51.8 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">80.0</td>\n<td style=\"padding: 6px; text-align: center;\">3.8</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>PM10</strong></td>\n<td style=\"padding: 6px; text-align: center;\">14.98 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">45.7</td>\n<td style=\"padding: 6px; text-align: center;\">2.1</td>\n</tr>\n</tbody>\n</table>\n<p style=\"margin: 10px 0 0 0; font-size: 11px; color: #7f8c8d;\">Source: ATMO Auvergne-Rhône-Alpes</p>\n</div>"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.713611,
+          45.92361
+        ]
+      },
+      "properties": {
+        "name": "PASSY",
+        "description": "<div style=\"font-family: Arial, sans-serif;\">\n<h3 style=\"margin: 0 0 10px 0; color: #2c3e50;\">PASSY</h3>\n<p style=\"margin: 5px 0;\"><strong>Code station:</strong> FR33220</p>\n<p style=\"margin: 5px 0;\"><strong>Date:</strong> 2026/02/04</p>\n<p style=\"margin: 10px 0 5px 0;\"><strong>6 polluants mesurés:</strong></p>\n<table style=\"width: 100%; border-collapse: collapse; font-size: 13px;\">\n<thead>\n<tr style=\"background: #ecf0f1; border-bottom: 2px solid #bdc3c7;\">\n<th style=\"padding: 8px; text-align: left;\">Polluant</th>\n<th style=\"padding: 8px; text-align: center;\">Moyenne</th>\n<th style=\"padding: 8px; text-align: center;\">Max</th>\n<th style=\"padding: 8px; text-align: center;\">Min</th>\n</tr>\n</thead>\n<tbody>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NO</strong></td>\n<td style=\"padding: 6px; text-align: center;\">11.73 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">36.0</td>\n<td style=\"padding: 6px; text-align: center;\">1.6</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NO2</strong></td>\n<td style=\"padding: 6px; text-align: center;\">28.06 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">45.7</td>\n<td style=\"padding: 6px; text-align: center;\">9.1</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NOX as NO2</strong></td>\n<td style=\"padding: 6px; text-align: center;\">46.02 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">100.9</td>\n<td style=\"padding: 6px; text-align: center;\">11.6</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>O3</strong></td>\n<td style=\"padding: 6px; text-align: center;\">17.65 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">48.3</td>\n<td style=\"padding: 6px; text-align: center;\">0.4</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>PM10</strong></td>\n<td style=\"padding: 6px; text-align: center;\">37.62 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">67.9</td>\n<td style=\"padding: 6px; text-align: center;\">8.6</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>PM2.5</strong></td>\n<td style=\"padding: 6px; text-align: center;\">22.02 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">52.9</td>\n<td style=\"padding: 6px; text-align: center;\">5.7</td>\n</tr>\n</tbody>\n</table>\n<p style=\"margin: 10px 0 0 0; font-size: 11px; color: #7f8c8d;\">Source: ATMO Auvergne-Rhône-Alpes</p>\n</div>"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
           6.845833,
           45.907223
         ]
       },
       "properties": {
-        "name": "BOSSONS (FR33232)",
-        "description": "<h3>BOSSONS</h3><p><strong>Code:</strong> FR33232</p><p><strong>4 polluants mesurés le 2026/02/04:</strong></p><table style='width:100%; border-collapse: collapse;'><tr style='border-bottom: 1px solid #ccc;'><th>Polluant</th><th>Moy.</th><th>Max</th><th>Min</th></tr><tr><td><strong>NO</strong></td><td>19.57 Âµg-m3</td><td>55.6</td><td>-0.5</td></tr><tr><td><strong>NO2</strong></td><td>30.95 Âµg-m3</td><td>63.5</td><td>3.1</td></tr><tr><td><strong>NOX as NO2</strong></td><td>60.95 Âµg-m3</td><td>148.7</td><td>2.4</td></tr><tr><td><strong>PM10</strong></td><td>23.48 Âµg-m3</td><td>64.2</td><td>2.4</td></tr></table>",
-        "code_station": "FR33232",
-        "nom_station": "BOSSONS",
-        "nb_polluants": 4,
-        "polluants": [
-          {
-            "polluant": "NO",
-            "valeur_moyenne": 19.57,
-            "valeur_max": 55.6,
-            "valeur_min": -0.5,
-            "nb_mesures": 24,
-            "unite": "Âµg-m3",
-            "date": "2026/02/04"
-          },
-          {
-            "polluant": "NO2",
-            "valeur_moyenne": 30.95,
-            "valeur_max": 63.5,
-            "valeur_min": 3.1,
-            "nb_mesures": 24,
-            "unite": "Âµg-m3",
-            "date": "2026/02/04"
-          },
-          {
-            "polluant": "NOX as NO2",
-            "valeur_moyenne": 60.95,
-            "valeur_max": 148.7,
-            "valeur_min": 2.4,
-            "nb_mesures": 24,
-            "unite": "Âµg-m3",
-            "date": "2026/02/04"
-          },
-          {
-            "polluant": "PM10",
-            "valeur_moyenne": 23.48,
-            "valeur_max": 64.2,
-            "valeur_min": 2.4,
-            "nb_mesures": 24,
-            "unite": "Âµg-m3",
-            "date": "2026/02/04"
-          }
-        ]
+        "name": "BOSSONS",
+        "description": "<div style=\"font-family: Arial, sans-serif;\">\n<h3 style=\"margin: 0 0 10px 0; color: #2c3e50;\">BOSSONS</h3>\n<p style=\"margin: 5px 0;\"><strong>Code station:</strong> FR33232</p>\n<p style=\"margin: 5px 0;\"><strong>Date:</strong> 2026/02/04</p>\n<p style=\"margin: 10px 0 5px 0;\"><strong>4 polluants mesurés:</strong></p>\n<table style=\"width: 100%; border-collapse: collapse; font-size: 13px;\">\n<thead>\n<tr style=\"background: #ecf0f1; border-bottom: 2px solid #bdc3c7;\">\n<th style=\"padding: 8px; text-align: left;\">Polluant</th>\n<th style=\"padding: 8px; text-align: center;\">Moyenne</th>\n<th style=\"padding: 8px; text-align: center;\">Max</th>\n<th style=\"padding: 8px; text-align: center;\">Min</th>\n</tr>\n</thead>\n<tbody>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NO</strong></td>\n<td style=\"padding: 6px; text-align: center;\">19.57 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">55.6</td>\n<td style=\"padding: 6px; text-align: center;\">-0.5</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NO2</strong></td>\n<td style=\"padding: 6px; text-align: center;\">30.95 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">63.5</td>\n<td style=\"padding: 6px; text-align: center;\">3.1</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>NOX as NO2</strong></td>\n<td style=\"padding: 6px; text-align: center;\">60.95 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">148.7</td>\n<td style=\"padding: 6px; text-align: center;\">2.4</td>\n</tr>\n<tr style=\"border-bottom: 1px solid #ecf0f1;\">\n<td style=\"padding: 6px;\"><strong>PM10</strong></td>\n<td style=\"padding: 6px; text-align: center;\">23.48 µg-m3</td>\n<td style=\"padding: 6px; text-align: center;\">64.2</td>\n<td style=\"padding: 6px; text-align: center;\">2.4</td>\n</tr>\n</tbody>\n</table>\n<p style=\"margin: 10px 0 0 0; font-size: 11px; color: #7f8c8d;\">Source: ATMO Auvergne-Rhône-Alpes</p>\n</div>"
       }
     }
   ]
