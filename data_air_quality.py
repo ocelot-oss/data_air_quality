@@ -2,92 +2,106 @@ import requests
 import pandas as pd
 import io
 import json
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
+from bs4 import BeautifulSoup
 
-# === CONFIGURATION ===
+# === CONFIG ===
 
-API_DATA_URL = "https://data.opendatasoft.com/api/records/1.0/search/"
-STATIONS_CSV_URL = "https://www.geodair.fr/api-ext/stations/export"
-POLLUTANT = "NO2"     # par exemple NO2, PM10, O3...
-START_DATE = "2026-02-01"  # format yyyy-mm-dd
-END_DATE = "2026-02-02"
-MAX_ROWS = 10000       # nb max de lignes à récupérer
+# dossier object storage où sont publiés les fichiers temps réel
+BASE_DATA_URL = "https://object.infra.data.gouv.fr/ineris-prod/lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/"
 
-# === 1) Récupérer les mesures via l’API ods/data.gouv.fr ===
+STATIONS_CSV_LOCAL = "stations.csv"   # ton fichier local
+OUTPUT_GEOJSON = "air_data_gouv.geojson"
 
-params = {
-    "dataset": "donnees-temps-reel-de-mesure-des-concentrations-de-polluants-atmospheriques-reglementes-1",
-    "refine.polluant": POLLUTANT,
-    "refine.date": START_DATE,
-    "rows": MAX_ROWS
-}
+# filtre des polluants que tu veux (par exemple)
+WANTED_POLLUTANTS = ["NO2","PM10","O3","PM2.5","SO2","CO"]
 
-print(f"📥 Récupération des mesures du polluant {POLLUTANT} pour {START_DATE}…")
-r = requests.get(API_DATA_URL, params=params)
-r.raise_for_status()
-data = r.json()
+# === FONCTIONS UTILES ===
 
-# Normaliser en DataFrame
-records = pd.json_normalize(data.get("records", []))
-print(f"Lignes de mesures reçues : {len(records)}")
+def find_latest_data_file():
+    """
+    Récupère la liste des fichiers disponibles sur la page object storage
+    et renvoie l'URL du fichier le plus récent.
+    """
 
-if len(records) == 0:
-    print("🚫 Aucune mesure trouvée pour cette période — vérifie les paramètres.")
-    exit()
+    r = requests.get(BASE_DATA_URL)
+    soup = BeautifulSoup(r.text, "html.parser")
 
-df_measures = pd.DataFrame({
-    "code_station": records["fields.code_station"],
-    "polluant": records["fields.polluant"],
-    "date": pd.to_datetime(records["fields.date"]),
-    "concentration": records["fields.concentration"]
-})
+    # trouver tous les liens vers des fichiers CSV
+    links = [a["href"] for a in soup.find_all("a", href=True) if a["href"].endswith(".csv")]
 
+    # si aucun fichier trouvé
+    if not links:
+        print("Aucun fichier CSV trouvé dans", BASE_DATA_URL)
+        return None
 
-# === 2) Récupérer les coordonnées des stations ===
+    # déterminer le plus récent par nom (souvent format YYYYMMDD dans le nom)
+    links_sorted = sorted(links, reverse=True)
+    latest_file = links_sorted[0]
+    return BASE_DATA_URL + latest_file
 
-print("📥 Téléchargement des stations (coordonnées)...")
-r2 = requests.get(STATIONS_CSV_URL, headers={"apikey": ""})  # clé API Geod’air si nécessaire
-r2.encoding = 'utf-8'
+def download_csv(url):
+    """
+    Télécharge le CSV depuis l'URL et retourne un DataFrame pandas.
+    """
+    print(f"Téléchargement du fichier : {url}")
+    r = requests.get(url)
+    r.raise_for_status()
+    return pd.read_csv(io.StringIO(r.text), sep=";")
 
-df_stations = pd.read_csv(io.StringIO(r2.text), sep=";")
-print(f"Lignes stations récupérées : {len(df_stations)}")
+# === SCRIPT PRINCIPAL ===
 
-# Garder uniquement les colonnes utiles
-df_stations = df_stations[["Code", "Longitude", "Latitude", "Nom station", "Commune"]]
+# 1) trouver le fichier le plus récent
+latest_url = find_latest_data_file()
+if not latest_url:
+    print("Impossible de récupérer un fichier temporal des mesures.")
+    exit(1)
 
+df_measures = download_csv(latest_url)
+print(f"Lignes mesurées : {len(df_measures)}")
 
-# === 3) Merge mesures + stations ===
+# filtrer polluants si nécessaire
+df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
 
-print("🔗 Fusion des mesures et des coordonnées des stations…")
-df_merged = df_measures.merge(
+if df_measures.empty:
+    print("Aucune mesure filtrée pour les polluants demandés.")
+    exit(1)
+
+# 2) lire les stations locales
+df_stations = pd.read_csv(STATIONS_CSV_LOCAL, sep=";")
+
+# on s'assure que la colonne "Code" de stations est alignée avec le code station des mesures
+df_stations = df_stations.rename(columns={"Code": "code_station"})
+
+# 3) fusionner
+df = df_measures.merge(
     df_stations,
-    left_on="code_station",
-    right_on="Code",
+    left_on="CodeStation",
+    right_on="code_station",
     how="left"
 )
 
-print(f"Lignes après merge : {len(df_merged)}")
+if df.empty:
+    print("Merge vide entre mesures et stations.")
+    exit(1)
 
-
-# === 4) Générer GeoJSON ===
-
-print("🌍 Création du GeoJSON…")
+# 4) générer GeoJSON
 features = []
-for _, row in df_merged.iterrows():
-    if pd.notna(row["Longitude"]) and pd.notna(row["Latitude"]):
+for _, row in df.iterrows():
+    lon = row.get("Longitude")
+    lat = row.get("Latitude")
+    if pd.notna(lon) and pd.notna(lat):
         features.append({
             "type": "Feature",
-            "geometry": {
-                "type": "Point",
-                "coordinates": [row["Longitude"], row["Latitude"]],
-            },
+            "geometry": { "type": "Point", "coordinates": [lon, lat] },
             "properties": {
-                "code_station": row["code_station"],
-                "nom_station": row["Nom station"],
-                "commune": row["Commune"],
-                "date": row["date"].strftime("%Y-%m-%d %H:%M:%S"),
-                "polluant": row["polluant"],
-                "concentration": row["concentration"]
+                "code_station": row["CodeStation"],
+                "polluant": row["Polluant"],
+                "date": row["Date"],
+                "concentration": row["Concentration"],
+                "nom_station": row.get("Nom station"),
+                "commune": row.get("Commune")
             }
         })
 
@@ -96,11 +110,10 @@ geojson = {
     "features": features
 }
 
-with open("air_data_gouv.geojson", "w", encoding="utf-8") as f:
+with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-print("✅ GeoJSON généré avec succès !")
-
+print("GeoJSON généré avec succès !")
 
 
 
