@@ -1,92 +1,102 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import requests
-import io
 import pandas as pd
-import json
+import io
 from datetime import datetime, timedelta
+import json
 
 # --- CONFIGURATION ---
 API_KEY = "ZjdpgWC8ZtAIWvBiZDKUFe7KRMBLorr0"
+STATIONS_URL = "https://www.geodair.fr/api-ext/station/export"
+STATISTIQUE_URL = "https://www.geodair.fr/api-ext/statistique/export"
 ZAS = "FR84ZAR03"
-FAMILLE_POLLUANT = 2000
+FAMILLE_POLLUANT = "2000"
 TYPE_DONNEE = "a1"
+GEOJSON_FILE = "air.geojson"
 
-# Chemin local du CSV stations
-STATIONS_CSV = "stations.csv"  # soit téléchargé manuellement ou via API
-
-# --- FONCTION DE CALCUL DE LA PÉRIODE ---
+# --- FONCTIONS UTILES ---
 def get_period(days=1):
     """
-    Renvoie date_debut et date_fin pour la période demandée
+    Renvoie date_debut et date_fin pour la période demandée.
+    On prend jusqu'à hier minuit pour éviter données incomplètes.
     """
     fin = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     debut = fin - timedelta(days=days)
     return debut.strftime("%d/%m/%Y %H:%M"), fin.strftime("%d/%m/%Y %H:%M")
 
-# --- FONCTION DE TÉLÉCHARGEMENT DU CSV DE MESURES ---
-def download_measurements(date_debut, date_fin):
-    url = (
-        "https://www.geodair.fr/api-ext/statistique/export"
-        f"?zas={ZAS}&famille_polluant={FAMILLE_POLLUANT}"
-        f"&date_debut={date_debut}&date_fin={date_fin}&type_donnee={TYPE_DONNEE}"
-    )
+def download_csv(url, params=None):
+    """
+    Télécharge un CSV depuis une URL ou un endpoint API, retourne un DataFrame pandas.
+    """
     headers = {"accept": "text/csv; charset=UTF-8", "apikey": API_KEY}
-    
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        raise Exception(f"Erreur API : {response.status_code}")
-    
-    # Le CSV est renvoyé directement
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
     df = pd.read_csv(io.StringIO(response.text), sep=";")
+    # Nettoyage des colonnes : enlever guillemets et espaces
+    df.columns = df.columns.str.strip().str.replace('"', '')
     return df
 
-# --- CHARGEMENT DU CSV STATIONS ---
-stations = pd.read_csv(STATIONS_CSV, sep=";", encoding="utf-8")
+# --- 1️⃣ Télécharger les stations ---
+print("Téléchargement des stations...")
+stations = download_csv(STATIONS_URL)
+print(f"Lignes stations récupérées: {len(stations)}")
 
-# --- CALCUL DE LA PÉRIODE ---
+# --- 2️⃣ Télécharger les mesures pour la période ---
 date_debut, date_fin = get_period(days=1)
-print(f"Tentative d'export pour la période {date_debut} -> {date_fin}")
+print(f"Tentative d'export pour la période {date_debut} -> {date_fin}...")
 
-# --- TÉLÉCHARGEMENT DES MESURES ---
-df_mesures = download_measurements(date_debut, date_fin)
-print(f"Lignes récupérées: {len(df_mesures)}")
-
-# --- JOINTURE POUR AJOUTER LONGITUDE ET LATITUDE ---
-df = df_mesures.merge(
-    stations[['Code', 'Longitude', 'Latitude']],
-    left_on='Code',   # colonne dans df_mesures
-    right_on='Code',          # colonne dans stations
-    how='left'
-)
-
-# --- CRÉATION DU GEOJSON ---
-features = []
-for _, row in df.iterrows():
-    if pd.notnull(row['Longitude']) and pd.notnull(row['Latitude']):
-        features.append({
-            "type": "Feature",
-            "geometry": {
-                "type": "Point",
-                "coordinates": [row['Longitude'], row['Latitude']]
-            },
-            "properties": {
-                "station": row.get("nom_station", ""),
-                "polluant": row.get("polluant", ""),
-                "valeur": row.get("valeur", None),
-                "unite": row.get("unite", ""),
-                "date": row.get("date_heure", "")
-            }
-        })
-
-geojson = {
-    "type": "FeatureCollection",
-    "features": features
+params = {
+    "zas": ZAS,
+    "famille_polluant": FAMILLE_POLLUANT,
+    "date_debut": date_debut,
+    "date_fin": date_fin,
+    "type_donnee": TYPE_DONNEE
 }
 
-# --- SAUVEGARDE DU GEOJSON ---
-with open("air.geojson", "w", encoding="utf-8") as f:
-    json.dump(geojson, f, ensure_ascii=False, indent=2)
+df_mesures = download_csv(STATISTIQUE_URL, params=params)
+print(f"Lignes mesures récupérées: {len(df_mesures)}")
 
-print("GeoJSON généré : air.geojson")
+# --- 3️⃣ Si mesures disponibles, merge avec stations ---
+if df_mesures.empty:
+    print("Aucune mesure trouvée pour cette période. GeoJSON non généré.")
+else:
+    # Normaliser les colonnes Code pour merge
+    df_mesures['Code'] = df_mesures['Code'].astype(str)
+    stations['Code'] = stations['Code'].astype(str)
+    
+    # Merge pour ajouter Longitude / Latitude
+    df = df_mesures.merge(
+        stations[['Code', 'Longitude', 'Latitude']],
+        left_on='Code',
+        right_on='Code',
+        how='left'
+    )
+    
+    # --- 4️⃣ Générer GeoJSON ---
+    features = []
+    for _, row in df.iterrows():
+        if pd.notnull(row['Longitude']) and pd.notnull(row['Latitude']):
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [row['Longitude'], row['Latitude']]
+                },
+                "properties": row.drop(['Longitude','Latitude']).to_dict()
+            }
+            features.append(feature)
+    
+    geojson = {
+        "type": "FeatureCollection",
+        "features": features
+    }
+    
+    with open(GEOJSON_FILE, "w", encoding="utf-8") as f:
+        json.dump(geojson, f, ensure_ascii=False, indent=2)
+    
+    print(f"GeoJSON généré : {GEOJSON_FILE} avec {len(features)} points")
 
 
 
