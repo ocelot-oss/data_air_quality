@@ -36,7 +36,7 @@ def download_measurements(date_debut, date_fin):
         raise Exception(f"Erreur API : {response.status_code}")
     
     # Le CSV est renvoyé directement
-    df = pd.read_csv(pd.compat.StringIO(response.text), sep=";")
+    df = pd.read_csv(io.StringIO(response.text), sep=";")
     return df
 
 # --- CHARGEMENT DU CSV STATIONS ---
@@ -87,6 +87,7 @@ with open("air.geojson", "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
 print("GeoJSON généré : air.geojson")
+
 
 
 
