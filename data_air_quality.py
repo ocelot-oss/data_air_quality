@@ -2,106 +2,108 @@ import requests
 import pandas as pd
 import io
 import json
-import re
-from datetime import datetime
-from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
 # === CONFIG ===
 
-# dossier object storage où sont publiés les fichiers temps réel
-BASE_DATA_URL = "https://object.infra.data.gouv.fr/ineris-prod/lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/"
+# Base URL du stockage des fichiers E2
+BASE_DATA_URL = (
+    "https://object.infra.data.gouv.fr/"
+    "ineris-prod/lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/"
+)
 
-STATIONS_CSV_LOCAL = "stations.csv"   # ton fichier local
+STATIONS_CSV_LOCAL = "stations.csv"   # ton fichier local de stations
 OUTPUT_GEOJSON = "air_data_gouv.geojson"
 
-# filtre des polluants que tu veux (par exemple)
-WANTED_POLLUTANTS = ["NO2","PM10","O3","PM2.5","SO2","CO"]
+# Polluants que tu veux inclure (facultatif, sinon laisse vide)
+WANTED_POLLUTANTS = []  # [] = toutes
 
 # === FONCTIONS UTILES ===
 
-def find_latest_data_file():
+def build_e2_url_for_date(date: datetime):
     """
-    Récupère la liste des fichiers disponibles sur la page object storage
-    et renvoie l'URL du fichier le plus récent.
+    Construit l'URL du fichier E2 correspondant à la date donnée.
+    Par convention, les fichiers s'appellent FR_E2_YYYY-MM-DD.csv
+    et sont dans un sous‑répertoire 'YYYY'.
     """
+    date_str = date.strftime("%Y-%m-%d")
+    year_str = date.strftime("%Y")
+    filename = f"FR_E2_{date_str}.csv"
+    return f"{BASE_DATA_URL}{year_str}/{filename}"
 
-    r = requests.get(BASE_DATA_URL)
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    # trouver tous les liens vers des fichiers CSV
-    links = [a["href"] for a in soup.find_all("a", href=True) if a["href"].endswith(".csv")]
-
-    # si aucun fichier trouvé
-    if not links:
-        print("Aucun fichier CSV trouvé dans", BASE_DATA_URL)
-        return None
-
-    # déterminer le plus récent par nom (souvent format YYYYMMDD dans le nom)
-    links_sorted = sorted(links, reverse=True)
-    latest_file = links_sorted[0]
-    return BASE_DATA_URL + latest_file
-
-def download_csv(url):
-    """
-    Télécharge le CSV depuis l'URL et retourne un DataFrame pandas.
-    """
-    print(f"Téléchargement du fichier : {url}")
+def download_e2_csv(url):
+    """Télécharge et parse le CSV si disponible."""
+    print(f"Téléchargement du fichier E2 : {url}")
     r = requests.get(url)
-    r.raise_for_status()
-    return pd.read_csv(io.StringIO(r.text), sep=";")
+    if r.status_code == 200 and len(r.text) > 100:
+        try:
+            df = pd.read_csv(io.StringIO(r.text), sep=";")
+            print(f"CSV chargé ({len(df)} lignes).")
+            return df
+        except Exception as e:
+            print("Erreur lecture CSV :", e)
+            return pd.DataFrame()
+    else:
+        print(f"Fichier non trouvé ou vide (status {r.status_code}).")
+        return pd.DataFrame()
 
 # === SCRIPT PRINCIPAL ===
 
-# 1) trouver le fichier le plus récent
-latest_url = find_latest_data_file()
-if not latest_url:
-    print("Impossible de récupérer un fichier temporal des mesures.")
-    exit(1)
+# 1) Déterminer la date cible (hier)
+target_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+url_e2 = build_e2_url_for_date(target_date)
 
-df_measures = download_csv(latest_url)
-print(f"Lignes mesurées : {len(df_measures)}")
-
-# filtrer polluants si nécessaire
-df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
+df_measures = download_e2_csv(url_e2)
 
 if df_measures.empty:
-    print("Aucune mesure filtrée pour les polluants demandés.")
+    print("Aucun fichier E2 valide trouvé pour la date cible.")
     exit(1)
 
-# 2) lire les stations locales
+# 2) Filtrer polluants si demandé
+if WANTED_POLLUTANTS:
+    df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
+
+if df_measures.empty:
+    print("Aucune mesure après filtrage des polluants.")
+    exit(1)
+
+# 3) Lire le fichier local des stations (coordonnées)
 df_stations = pd.read_csv(STATIONS_CSV_LOCAL, sep=";")
 
-# on s'assure que la colonne "Code" de stations est alignée avec le code station des mesures
+# Normaliser la colonne du code de station pour merger
 df_stations = df_stations.rename(columns={"Code": "code_station"})
 
-# 3) fusionner
-df = df_measures.merge(
+# 4) Fusionner mesures + coordonnées
+df_merged = df_measures.merge(
     df_stations,
     left_on="CodeStation",
     right_on="code_station",
     how="left"
 )
 
-if df.empty:
-    print("Merge vide entre mesures et stations.")
+if df_merged.empty:
+    print("Aucune correspondance entre mesures et stations.")
     exit(1)
 
-# 4) générer GeoJSON
+# 5) Générer GeoJSON
 features = []
-for _, row in df.iterrows():
+for _, row in df_merged.iterrows():
     lon = row.get("Longitude")
     lat = row.get("Latitude")
     if pd.notna(lon) and pd.notna(lat):
         features.append({
             "type": "Feature",
-            "geometry": { "type": "Point", "coordinates": [lon, lat] },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [lon, lat],
+            },
             "properties": {
                 "code_station": row["CodeStation"],
                 "polluant": row["Polluant"],
                 "date": row["Date"],
-                "concentration": row["Concentration"],
+                "concentration": row.get("Concentration"),
                 "nom_station": row.get("Nom station"),
-                "commune": row.get("Commune")
+                "commune": row.get("Commune"),
             }
         })
 
@@ -113,8 +115,7 @@ geojson = {
 with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-print("GeoJSON généré avec succès !")
-
+print("✅ GeoJSON généré avec succès !")
 
 
 
