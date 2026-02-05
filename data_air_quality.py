@@ -8,27 +8,16 @@ from urllib.parse import quote
 # === CONFIG ===
 STATIONS_CSV = "stations.csv"
 OUTPUT_GEOJSON = "air_data_gouv.geojson"
-WANTED_POLLUTANTS = []  # vide = tous
+WANTED_POLLUTANTS = []  # vide = tous, ou spécifie : ['NO2', 'PM10', 'O3']
 
 def build_e2_url(date: datetime):
-    """
-    Construire l'URL de téléchargement via l'API MinIO
-    """
     date_str = date.strftime("%Y-%m-%d")
     year_str = date.strftime("%Y")
-    
-    # Chemin du fichier (sans encoding ici, on l'encode après)
     file_path = f"lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/{year_str}/FR_E2_{date_str}.csv"
-    
-    # URL encodée
     file_path_encoded = quote(file_path, safe='')
-    
     return f"https://object.infra.data.gouv.fr/api/v1/buckets/ineris-prod/objects/download?prefix={file_path_encoded}"
 
 def download_csv(url):
-    """
-    Télécharge le fichier et retourne un DataFrame
-    """
     print(f"Téléchargement : {url}")
     
     headers = {
@@ -40,47 +29,30 @@ def download_csv(url):
         r = requests.get(url, headers=headers, timeout=30)
         
         print(f"Status: {r.status_code}")
-        print(f"Content-Type: {r.headers.get('Content-Type')}")
         print(f"Taille: {len(r.content)} octets")
         
         if r.status_code == 200 and len(r.content) > 100:
-            # Afficher aperçu
-            print("=== APERÇU (200 premiers caractères) ===")
-            print(r.text[:200])
-            print("=========================================")
+            # IMPORTANT : encoding="utf-8-sig" pour nettoyer le BOM
+            df = pd.read_csv(io.StringIO(r.text), sep=";", encoding="utf-8-sig")
             
-            # Parser le CSV
-            try:
-                df = pd.read_csv(io.StringIO(r.text), sep=";")
-                
-                if df.empty:
-                    print("⚠️ Vide avec sep=';', test avec ','")
-                    df = pd.read_csv(io.StringIO(r.text), sep=",")
-                
-                print(f"✅ CSV parsé : {len(df)} lignes, {len(df.columns)} colonnes")
-                if not df.empty:
-                    print("Premières colonnes :", df.columns.tolist()[:5])
-                return df
-            except Exception as e:
-                print(f"❌ Erreur parsing CSV : {e}")
-                return pd.DataFrame()
+            print(f"✅ CSV parsé : {len(df)} lignes, {len(df.columns)} colonnes")
+            return df
         else:
-            print(f"❌ Fichier vide ou erreur HTTP")
+            print(f"❌ Fichier vide ou erreur")
             return pd.DataFrame()
             
     except Exception as e:
-        print(f"❌ Erreur requête : {e}")
+        print(f"❌ Erreur : {e}")
         return pd.DataFrame()
 
 # ============ LOGIQUE PRINCIPALE ============
 
-# Chercher le fichier le plus récent
 target_date = datetime.utcnow().date() - timedelta(days=1)
 print(f"\n🔍 Recherche du fichier pour le {target_date}")
 
 df_measures = download_csv(build_e2_url(datetime.combine(target_date, datetime.min.time())))
 
-# Retry sur les jours précédents si nécessaire
+# Retry
 tries = 5
 i = 1
 while df_measures.empty and i < tries:
@@ -90,70 +62,86 @@ while df_measures.empty and i < tries:
     i += 1
 
 if df_measures.empty:
-    print("\n❌ Aucun fichier E2 valide trouvé sur les 5 derniers jours.")
+    print("\n❌ Aucun fichier E2 valide trouvé")
     exit(1)
 
 print("\n✅ Fichier de mesures chargé !")
-print(f"Colonnes disponibles : {df_measures.columns.tolist()}")
+print(f"Colonnes : {df_measures.columns.tolist()[:10]}")
+
+# FILTRE VALLÉE DE L'ARVE
+print("\n🔍 Filtrage pour la vallée de l'Arve...")
+df_measures = df_measures[
+    df_measures['Zas'].str.contains('ARVE', case=False, na=False)
+]
+
+print(f"✅ {len(df_measures)} mesures trouvées")
+print(f"Stations : {df_measures['nom site'].unique()}")
+print(f"Polluants : {df_measures['Polluant'].unique()}")
+
+if df_measures.empty:
+    print("❌ Aucune donnée pour la vallée de l'Arve")
+    exit(1)
 
 # Filtrer polluants si spécifié
 if WANTED_POLLUTANTS:
     df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
-    print(f"Filtrage polluants : {len(df_measures)} lignes restantes")
-
-if df_measures.empty:
-    print("❌ Aucune donnée après filtrage des polluants")
-    exit(1)
 
 # Lire stations locales
 print(f"\n📍 Chargement du fichier stations : {STATIONS_CSV}")
 try:
     df_stations = pd.read_csv(STATIONS_CSV, sep=";")
-    print(f"Stations chargées : {len(df_stations)} lignes")
-    print(f"Colonnes stations : {df_stations.columns.tolist()[:5]}")
+    print(f"Stations : {len(df_stations)} lignes")
 except Exception as e:
     print(f"❌ Erreur lecture stations.csv : {e}")
     exit(1)
 
-# Merge mesures + coords
+# Merge
 print("\n🔗 Merge des données...")
 df_merged = df_measures.merge(
     df_stations,
     left_on="code site",
     right_on="Code",
-    how="left"
+    how="inner"  # Inner pour garder SEULEMENT les stations matchées
 )
 
 if df_merged.empty:
-    print("❌ Merge a échoué - aucune correspondance")
+    print("❌ Aucune correspondance entre mesures et stations")
+    print(f"Codes dans CSV : {df_measures['code site'].unique()}")
+    print(f"Codes dans stations.csv : {df_stations['Code'].unique()}")
     exit(1)
 
-# Filtrer les lignes sans coordonnées
+# Filtrer lignes sans coordonnées
 df_merged = df_merged[df_merged['Latitude'].notna() & df_merged['Longitude'].notna()]
 print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
-# Création GeoJSON - GROUPER PAR STATION
+# Création GeoJSON - AGRÉGATION JOURNALIÈRE PAR POLLUANT
 print("\n🗺️  Création du GeoJSON...")
 
-# Grouper par station
 stations_grouped = df_merged.groupby(['code site', 'nom site', 'Latitude', 'Longitude'])
 
 features = []
 
 for (code_station, nom_station, lat, lon), group in stations_grouped:
-    # Collecter TOUS les polluants de cette station
-    mesures = []
+    # Grouper par polluant et calculer moyenne + max
+    polluants_stats = []
     
-    for _, row in group.iterrows():
-        mesures.append({
-            "polluant": str(row.get("Polluant", "")),
-            "valeur": float(row.get("valeur", 0)) if pd.notna(row.get("valeur")) else None,
-            "unite": str(row.get("unitÃ© de mesure", "")),
-            "date": str(row.get("ï»¿Date de dÃ©but", "")),
-            "validite": str(row.get("validitÃ©", ""))
-        })
+    for polluant, polluant_data in group.groupby('Polluant'):
+        valeurs = polluant_data['valeur'].dropna()
+        
+        if len(valeurs) > 0:
+            polluants_stats.append({
+                "polluant": str(polluant),
+                "valeur_moyenne": round(float(valeurs.mean()), 2),
+                "valeur_max": round(float(valeurs.max()), 2),
+                "valeur_min": round(float(valeurs.min()), 2),
+                "nb_mesures": int(len(valeurs)),
+                "unite": str(polluant_data['unité de mesure'].iloc[0]) if pd.notna(polluant_data['unité de mesure'].iloc[0]) else "µg/m3",
+                "date": str(polluant_data['Date de début'].iloc[0])[:10] if pd.notna(polluant_data['Date de début'].iloc[0]) else "N/A"
+            })
     
-    # UN SEUL point par station avec TOUTES ses mesures
+    # Trier par polluant (alphabétique)
+    polluants_stats = sorted(polluants_stats, key=lambda x: x['polluant'])
+    
     features.append({
         "type": "Feature",
         "geometry": {
@@ -163,8 +151,8 @@ for (code_station, nom_station, lat, lon), group in stations_grouped:
         "properties": {
             "code_station": str(code_station),
             "nom_station": str(nom_station),
-            "nombre_mesures": len(mesures),
-            "mesures": mesures  # ← TABLEAU avec TOUS les polluants
+            "nb_polluants": len(polluants_stats),
+            "polluants": polluants_stats
         }
     })
 
@@ -173,14 +161,9 @@ geojson = {"type": "FeatureCollection", "features": features}
 with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON} ({len(features)} stations, {sum(len(f['properties']['mesures']) for f in features)} mesures)")
-
-geojson = {"type": "FeatureCollection", "features": features}
-
-with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
-    json.dump(geojson, f, ensure_ascii=False, indent=2)
-
-print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON} ({len(features)} points)")
+total_polluants = sum(len(f['properties']['polluants']) for f in features)
+print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
+print(f"   {len(features)} stations, {total_polluants} polluants avec stats journalières")
 
 
 
