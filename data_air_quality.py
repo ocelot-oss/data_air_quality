@@ -41,20 +41,31 @@ def generate_file_id(date_debut, date_fin):
     print("ID du fichier généré:", file_id)
     return file_id
 
-def download_csv_from_id(file_id, max_tries=10):
+def download_csv_from_id(file_id, max_tries=10, min_csv_size=300):
     download_url = f"https://www.geodair.fr/api-ext/download?id={file_id}"
+
     for i in range(1, max_tries + 1):
         r = requests.get(download_url, headers={"apikey": API_KEY})
         r.encoding = 'utf-8'
-        # Si le CSV contient plus de quelques caractères, on suppose qu'il est prêt
-        if len(r.text) > 200:
-            df = pd.read_csv(io.StringIO(r.text), sep=";")
-            return df
+
+        text = r.text.strip()
+        
+        # si le CSV est suffisamment long pour contenir des colonnes
+        if len(text) > min_csv_size and "\n" in text and ";" in text:
+            try:
+                df = pd.read_csv(io.StringIO(text), sep=";")
+                print(f"CSV récupéré (tentative {i})")
+                return df
+            except pd.errors.EmptyDataError:
+                pass  # fichier peut contenir juste un ID ou un contenu non CSV
         else:
-            print(f"Fichier non prêt, tentative {i}/{max_tries}...")
-            time.sleep(SLEEP_BETWEEN_TRIES)
+            print(f"Fichier non prêt ou sans données (tentative {i}/{max_tries})")
+        
+        time.sleep(SLEEP_BETWEEN_TRIES)
+
     print("Aucune mesure récupérée après plusieurs tentatives.")
-    return pd.DataFrame()  # retour vide si jamais rien
+    return pd.DataFrame()
+
 
 # === SCRIPT PRINCIPAL ===
 
@@ -122,6 +133,7 @@ else:
         json.dump(geojson, f, ensure_ascii=False, indent=2)
 
     print("GeoJSON généré avec succès !")
+
 
 
 
