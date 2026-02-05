@@ -53,7 +53,7 @@ print(f"Lignes récupérées: {len(df_mesures)}")
 # --- JOINTURE POUR AJOUTER LONGITUDE ET LATITUDE ---
 df = df_mesures.merge(
     stations[['Code', 'Longitude', 'Latitude']],
-    left_on='code_station',   # colonne dans df_mesures
+    left_on='Code',   # colonne dans df_mesures
     right_on='Code',          # colonne dans stations
     how='left'
 )
@@ -87,6 +87,7 @@ with open("air.geojson", "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
 print("GeoJSON généré : air.geojson")
+
 
 
 
