@@ -5,54 +5,40 @@ import json
 from datetime import datetime, timedelta
 
 # === CONFIG ===
-
-# base URL des fichiers E2
 BASE_DATA_URL = (
     "https://object.infra.data.gouv.fr/"
     "ineris-prod/lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/"
 )
-
-STATIONS_CSV = "stations.csv"        # ton fichier local
+STATIONS_CSV = "stations.csv"
 OUTPUT_GEOJSON = "air_data_gouv.geojson"
-
-# polluants que tu veux garder (vide = tous)
-WANTED_POLLUTANTS = []
+WANTED_POLLUTANTS = []  # vide = tous
 
 def build_e2_url(date: datetime):
-    """
-    Construire l’URL du CSV E2 pour une date donnée
-    en supposant le schéma FR_E2_YYYY-MM-DD.csv
-    """
     date_str = date.strftime("%Y-%m-%d")
     year_str = date.strftime("%Y")
     filename = f"FR_E2_{date_str}.csv"
     return f"{BASE_DATA_URL}{year_str}/{filename}"
 
 def download_csv(url):
-    """
-    Télécharge le fichier et retourne un DataFrame
-    """
-    print(f"Téléchargement du fichier : {url}")
-    r = requests.get(url)
+    print(f"Téléchargement : {url}")
+    r = requests.get(url, timeout=30)
     if r.status_code == 200 and len(r.text) > 100:
         try:
             df = pd.read_csv(io.StringIO(r.text), sep=";")
-            print("CSV chargé :", len(df), "lignes")
+            print(f"✅ CSV chargé : {len(df)} lignes")
             return df
         except Exception as e:
-            print("Erreur lors de la lecture du CSV:", e)
+            print(f"❌ Erreur lecture CSV : {e}")
             return pd.DataFrame()
     else:
-        print("Fichier non trouvé ou trop petit (status", r.status_code, ")")
+        print(f"❌ Fichier introuvable (status {r.status_code})")
         return pd.DataFrame()
 
 # ============ LOGIQUE PRINCIPALE ============
-
-# on commence avec "hier" pour s'assurer que le fichier est complet
 target_date = datetime.utcnow().date() - timedelta(days=1)
 df_measures = download_csv(build_e2_url(datetime.combine(target_date, datetime.min.time())))
 
-# si vide, tenter les jours précédents (jusqu'à 3 jours max)
+# Retry logic
 tries = 3
 i = 1
 while df_measures.empty and i < tries:
@@ -61,56 +47,65 @@ while df_measures.empty and i < tries:
     i += 1
 
 if df_measures.empty:
-    print("❌ Aucun fichier E2 valide trouvé sur les derniers jours.")
+    print("❌ Aucun fichier E2 valide trouvé")
     exit(1)
 
-# filtrer polluants si spécifié
+# Debug : afficher les colonnes disponibles
+print("Colonnes mesures :", df_measures.columns.tolist())
+
+# Filtrer polluants
 if WANTED_POLLUTANTS:
     df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
 
 if df_measures.empty:
-    print("❌ Aucune donnée après filtrage des polluants")
+    print("❌ Aucune donnée après filtrage polluants")
     exit(1)
 
-# lire stations locales
+# Lire stations SANS renommer avant le merge
 df_stations = pd.read_csv(STATIONS_CSV, sep=";")
-df_stations = df_stations.rename(columns={"Code": "code_station"})
+print("Colonnes stations :", df_stations.columns.tolist())
 
-# merge mesures + coords
+# Merge AVANT de renommer
 df_merged = df_measures.merge(
     df_stations,
-    left_on="code site",
-    right_on="Code",
+    left_on="code site",  # colonne dans df_measures
+    right_on="Code",       # colonne dans df_stations (AVANT rename)
     how="left"
 )
 
 if df_merged.empty:
-    print("❌ Aucune correspondance entre mesures et stations.")
+    print("❌ Merge a échoué")
     exit(1)
 
-# création GeoJSON
+print(f"✅ Merge réussi : {len(df_merged)} lignes")
+
+# Création GeoJSON
 features = []
 for _, row in df_merged.iterrows():
     lon = row.get("Longitude")
     lat = row.get("Latitude")
+    
     if pd.notna(lon) and pd.notna(lat):
         features.append({
             "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(lon), float(lat)]
+            },
             "properties": {
-                "code_station": row["CodeStation"],
-                "polluant": row["Polluant"],
-                "date": row.get("Date") or row.get("Date/Heure") or "",
-                "concentration": row.get("Concentration"),
+                "code_station": str(row.get("code site", "")),  # ou row.get("Code")
+                "polluant": str(row.get("Polluant", "")),
+                "date": str(row.get("Date de début", "") or row.get("Date", "")),
+                "concentration": float(row.get("valeur", 0)) if pd.notna(row.get("valeur")) else None,
             }
         })
 
 geojson = {"type": "FeatureCollection", "features": features}
+
 with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-print("✅ GeoJSON généré :", OUTPUT_GEOJSON)
-
+print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON} ({len(features)} points)")
 
 
 
