@@ -1,4 +1,5 @@
 import requests
+import io
 import pandas as pd
 import json
 from datetime import datetime, timedelta
@@ -86,6 +87,7 @@ with open("air.geojson", "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
 print("GeoJSON généré : air.geojson")
+
 
 
 
