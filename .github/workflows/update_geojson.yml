@@ -1,40 +1,43 @@
-name: Mise à jour GeoJSON
+name: Update Air Quality Data
 
 on:
   schedule:
-    - cron: "0 6,18 * * *"  # deux fois par jour
-  workflow_dispatch:
+    - cron: '0 6,18 * * *'  # 6h et 18h UTC (2 fois par jour)
+  workflow_dispatch:  # Permet de lancer manuellement
 
 jobs:
-  fetch-and-save:
+  update-data:
     runs-on: ubuntu-latest
-
+    
+    permissions:
+      contents: write  # IMPORTANT : permission d'écrire dans le repo
+    
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
-
-      - name: Installer dépendances
+          python-version: '3.x'
+      
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests pandas beautifulsoup4
-
-
-      - name: Exécuter le script
+          pip install requests pandas
+      
+      - name: Run script
         run: python3 data_air_quality.py
-
-      - name: Lister les fichiers
-        run: ls -l
-
-      - name: Commit & push air.geojson
+      
+      - name: Commit and push GeoJSON
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git add air.geojson
-          git commit -m "Mise à jour GeoJSON automatique" || echo "Rien à committer"
-          git push
-
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add air_data_gouv.geojson
+          
+          if git diff --staged --quiet; then
+            echo "✅ Pas de changements à commiter"
+          else
+            git commit -m "🌍 Update air quality data - $(date +'%Y-%m-%d %H:%M UTC')"
+            git push
+            echo "✅ GeoJSON mis à jour et pushé"
+          fi
