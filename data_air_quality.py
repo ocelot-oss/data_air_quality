@@ -124,6 +124,18 @@ print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
 # Création GeoJSON - AGRÉGATION JOURNALIÈRE PAR POLLUANT
 print("\n🗺️  Création du GeoJSON...")
+# AVANT : stations_grouped = df_merged.groupby(...)
+
+print("\n=== DEBUG DONNÉES ===")
+print("Colonnes df_merged :", df_merged.columns.tolist())
+print("\nPremières lignes :")
+print(df_merged[['code site', 'nom site', 'Polluant', 'valeur', 'unité de mesure']].head(10))
+print("\nTypes des colonnes :")
+print(df_merged[['Polluant', 'valeur', 'unité de mesure']].dtypes)
+print("\nValeurs uniques Polluant :")
+print(df_merged['Polluant'].unique())
+print("\nExemple de valeur brute :")
+print(repr(df_merged['Polluant'].iloc[0]))
 
 stations_grouped = df_merged.groupby(['code site', 'nom site', 'Latitude', 'Longitude'])
 
@@ -172,6 +184,7 @@ with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
 total_polluants = sum(len(f['properties']['polluants']) for f in features)
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations, {total_polluants} polluants avec stats journalières")
+
 
 
 
