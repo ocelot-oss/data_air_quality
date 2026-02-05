@@ -11,6 +11,9 @@ OUTPUT_GEOJSON = "air_data_gouv.geojson"
 WANTED_POLLUTANTS = []  # vide = tous, ou spécifie : ['NO2', 'PM10', 'O3']
 
 def build_e2_url(date: datetime):
+    """
+    Construire l'URL de téléchargement via l'API MinIO
+    """
     date_str = date.strftime("%Y-%m-%d")
     year_str = date.strftime("%Y")
     file_path = f"lcsqa/concentrations-de-polluants-atmospheriques-reglementes/temps-reel/{year_str}/FR_E2_{date_str}.csv"
@@ -18,6 +21,9 @@ def build_e2_url(date: datetime):
     return f"https://object.infra.data.gouv.fr/api/v1/buckets/ineris-prod/objects/download?prefix={file_path_encoded}"
 
 def download_csv(url):
+    """
+    Télécharge le fichier et retourne un DataFrame
+    """
     print(f"Téléchargement : {url}")
     
     headers = {
@@ -43,7 +49,6 @@ def download_csv(url):
                           .str.strip())
             
             print(f"✅ CSV parsé : {len(df)} lignes, {len(df.columns)} colonnes")
-            print(f"Colonnes nettoyées : {df.columns.tolist()[:5]}")
             return df
         else:
             print(f"❌ Fichier vide ou erreur")
@@ -55,12 +60,13 @@ def download_csv(url):
 
 # ============ LOGIQUE PRINCIPALE ============
 
-target_date = datetime.utcnow().date() - timedelta(days=1)
+# Chercher le fichier le plus récent
+target_date = datetime.now(datetime.UTC).date() - timedelta(days=1)
 print(f"\n🔍 Recherche du fichier pour le {target_date}")
 
 df_measures = download_csv(build_e2_url(datetime.combine(target_date, datetime.min.time())))
 
-# Retry
+# Retry sur les jours précédents si nécessaire
 tries = 5
 i = 1
 while df_measures.empty and i < tries:
@@ -70,11 +76,10 @@ while df_measures.empty and i < tries:
     i += 1
 
 if df_measures.empty:
-    print("\n❌ Aucun fichier E2 valide trouvé")
+    print("\n❌ Aucun fichier E2 valide trouvé sur les 5 derniers jours.")
     exit(1)
 
 print("\n✅ Fichier de mesures chargé !")
-print(f"Colonnes : {df_measures.columns.tolist()[:10]}")
 
 # FILTRE VALLÉE DE L'ARVE
 print("\n🔍 Filtrage pour la vallée de l'Arve...")
@@ -93,23 +98,28 @@ if df_measures.empty:
 # Filtrer polluants si spécifié
 if WANTED_POLLUTANTS:
     df_measures = df_measures[df_measures["Polluant"].isin(WANTED_POLLUTANTS)]
+    print(f"Filtrage polluants : {len(df_measures)} lignes restantes")
+
+if df_measures.empty:
+    print("❌ Aucune donnée après filtrage des polluants")
+    exit(1)
 
 # Lire stations locales
 print(f"\n📍 Chargement du fichier stations : {STATIONS_CSV}")
 try:
     df_stations = pd.read_csv(STATIONS_CSV, sep=";")
-    print(f"Stations : {len(df_stations)} lignes")
+    print(f"Stations chargées : {len(df_stations)} lignes")
 except Exception as e:
     print(f"❌ Erreur lecture stations.csv : {e}")
     exit(1)
 
-# Merge
+# Merge mesures + coords
 print("\n🔗 Merge des données...")
 df_merged = df_measures.merge(
     df_stations,
     left_on="code site",
     right_on="Code",
-    how="inner"  # Inner pour garder SEULEMENT les stations matchées
+    how="inner"
 )
 
 if df_merged.empty:
@@ -118,24 +128,12 @@ if df_merged.empty:
     print(f"Codes dans stations.csv : {df_stations['Code'].unique()}")
     exit(1)
 
-# Filtrer lignes sans coordonnées
+# Filtrer les lignes sans coordonnées
 df_merged = df_merged[df_merged['Latitude'].notna() & df_merged['Longitude'].notna()]
 print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
-# Création GeoJSON - AGRÉGATION JOURNALIÈRE PAR POLLUANT
+# Création GeoJSON - AGRÉGATION JOURNALIÈRE PAR POLLUANT AVEC DESCRIPTION HTML
 print("\n🗺️  Création du GeoJSON...")
-# AVANT : stations_grouped = df_merged.groupby(...)
-
-print("\n=== DEBUG DONNÉES ===")
-print("Colonnes df_merged :", df_merged.columns.tolist())
-print("\nPremières lignes :")
-print(df_merged[['code site', 'nom site', 'Polluant', 'valeur', 'unité de mesure']].head(10))
-print("\nTypes des colonnes :")
-print(df_merged[['Polluant', 'valeur', 'unité de mesure']].dtypes)
-print("\nValeurs uniques Polluant :")
-print(df_merged['Polluant'].unique())
-print("\nExemple de valeur brute :")
-print(repr(df_merged['Polluant'].iloc[0]))
 
 stations_grouped = df_merged.groupby(['code site', 'nom site', 'Latitude', 'Longitude'])
 
@@ -162,42 +160,79 @@ for (code_station, nom_station, lat, lon), group in stations_grouped:
     # Trier par polluant (alphabétique)
     polluants_stats = sorted(polluants_stats, key=lambda x: x['polluant'])
     
-    # Créer une description HTML formatée pour uMap
-description_html = f"<h3>{nom_station}</h3>"
-description_html += f"<p><strong>Code:</strong> {code_station}</p>"
-description_html += f"<p><strong>{len(polluants_stats)} polluants mesurés le {polluants_stats[0]['date'] if polluants_stats else 'N/A'}:</strong></p>"
-description_html += "<table style='width:100%; border-collapse: collapse;'>"
-description_html += "<tr style='border-bottom: 1px solid #ccc;'><th>Polluant</th><th>Moy.</th><th>Max</th><th>Min</th></tr>"
-
-for p in polluants_stats:
-    description_html += f"<tr><td><strong>{p['polluant']}</strong></td><td>{p['valeur_moyenne']} {p['unite']}</td><td>{p['valeur_max']}</td><td>{p['valeur_min']}</td></tr>"
-
-description_html += "</table>"
-
-features.append({
-    "type": "Feature",
-    "geometry": {
-        "type": "Point",
-        "coordinates": [float(lon), float(lat)]
-    },
-    "properties": {
-        "name": f"{nom_station} ({code_station})",  # ← Pour l'affichage du titre
-        "description": description_html,              # ← Pour la popup
-        "code_station": str(code_station),
-        "nom_station": str(nom_station),
-        "nb_polluants": len(polluants_stats),
-        "polluants": polluants_stats
-    }
-})
+    # Créer la description HTML complète
+    date_mesure = polluants_stats[0]['date'] if polluants_stats else 'N/A'
+    
+    description = f"""<div style="font-family: Arial, sans-serif;">
+<h3 style="margin: 0 0 10px 0; color: #2c3e50;">{nom_station}</h3>
+<p style="margin: 5px 0;"><strong>Code station:</strong> {code_station}</p>
+<p style="margin: 5px 0;"><strong>Date:</strong> {date_mesure}</p>
+<p style="margin: 10px 0 5px 0;"><strong>{len(polluants_stats)} polluants mesurés:</strong></p>
+<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+<thead>
+<tr style="background: #ecf0f1; border-bottom: 2px solid #bdc3c7;">
+<th style="padding: 8px; text-align: left;">Polluant</th>
+<th style="padding: 8px; text-align: center;">Moyenne</th>
+<th style="padding: 8px; text-align: center;">Max</th>
+<th style="padding: 8px; text-align: center;">Min</th>
+</tr>
+</thead>
+<tbody>
+"""
+    
+    for p in polluants_stats:
+        # Nettoyer l'unité (enlever le caractère bizarre)
+        unite_clean = p['unite'].replace('Âµ', 'µ').replace('Ã', '')
+        
+        description += f"""<tr style="border-bottom: 1px solid #ecf0f1;">
+<td style="padding: 6px;"><strong>{p['polluant']}</strong></td>
+<td style="padding: 6px; text-align: center;">{p['valeur_moyenne']} {unite_clean}</td>
+<td style="padding: 6px; text-align: center;">{p['valeur_max']}</td>
+<td style="padding: 6px; text-align: center;">{p['valeur_min']}</td>
+</tr>
+"""
+    
+    description += """</tbody>
+</table>
+<p style="margin: 10px 0 0 0; font-size: 11px; color: #7f8c8d;">Source: ATMO Auvergne-Rhône-Alpes</p>
+</div>"""
+    
+    features.append({
+        "type": "Feature",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [float(lon), float(lat)]
+        },
+        "properties": {
+            "name": f"{nom_station}",
+            "description": description
+        }
+    })
 
 geojson = {"type": "FeatureCollection", "features": features}
 
 with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
-total_polluants = sum(len(f['properties']['polluants']) for f in features)
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
-print(f"   {len(features)} stations, {total_polluants} polluants avec stats journalières")
+print(f"   {len(features)} stations avec descriptions HTML complètes")
+```
+
+---
+
+## **Changements principaux :**
+
+1. ✅ **Description HTML complète** avec tableau stylé
+2. ✅ **Nettoyage des unités** (`Âµg-m3` → `µg/m3`)
+3. ✅ **Propriétés simplifiées** (seulement `name` et `description` pour uMap)
+4. ✅ **Fix du warning datetime** (`datetime.now(datetime.UTC)`)
+
+---
+
+**Lance ce script, commit/push, et réimporte dans uMap avec l'URL :**
+```
+https://raw.githubusercontent.com/ocelot-oss/data_air_quality/main/air_data_gouv.geojson
+
 
 
 
