@@ -32,10 +32,18 @@ def download_csv(url):
         print(f"Taille: {len(r.content)} octets")
         
         if r.status_code == 200 and len(r.content) > 100:
-            # IMPORTANT : encoding="utf-8-sig" pour nettoyer le BOM
+            # Charger avec encoding UTF-8
             df = pd.read_csv(io.StringIO(r.text), sep=";", encoding="utf-8-sig")
             
+            # Nettoyer les noms de colonnes (fix encoding cassé)
+            df.columns = (df.columns
+                          .str.replace('Ã©', 'é')
+                          .str.replace('Ã ', 'à')
+                          .str.replace('ï»¿', '')
+                          .str.strip())
+            
             print(f"✅ CSV parsé : {len(df)} lignes, {len(df.columns)} colonnes")
+            print(f"Colonnes nettoyées : {df.columns.tolist()[:5]}")
             return df
         else:
             print(f"❌ Fichier vide ou erreur")
@@ -164,6 +172,7 @@ with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
 total_polluants = sum(len(f['properties']['polluants']) for f in features)
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations, {total_polluants} polluants avec stats journalières")
+
 
 
 
