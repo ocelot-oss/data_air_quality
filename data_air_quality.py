@@ -132,24 +132,39 @@ if df_merged.empty:
 df_merged = df_merged[df_merged['Latitude'].notna() & df_merged['Longitude'].notna()]
 print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
-# Création GeoJSON
+# Création GeoJSON - GROUPER PAR STATION
 print("\n🗺️  Création du GeoJSON...")
+
+# Grouper par station
+stations_grouped = df_merged.groupby(['code site', 'nom site', 'Latitude', 'Longitude'])
+
 features = []
 
-for _, row in df_merged.iterrows():
+for (code_station, nom_station, lat, lon), group in stations_grouped:
+    # Collecter TOUS les polluants de cette station
+    mesures = []
+    
+    for _, row in group.iterrows():
+        mesures.append({
+            "polluant": str(row.get("Polluant", "")),
+            "valeur": float(row.get("valeur", 0)) if pd.notna(row.get("valeur")) else None,
+            "unite": str(row.get("unitÃ© de mesure", "")),
+            "date": str(row.get("ï»¿Date de dÃ©but", "")),
+            "validite": str(row.get("validitÃ©", ""))
+        })
+    
+    # UN SEUL point par station avec TOUTES ses mesures
     features.append({
         "type": "Feature",
         "geometry": {
             "type": "Point",
-            "coordinates": [float(row["Longitude"]), float(row["Latitude"])]
+            "coordinates": [float(lon), float(lat)]
         },
         "properties": {
-            "code_station": str(row.get("code site", "")),
-            "nom_station": str(row.get("Nom site", "")),
-            "polluant": str(row.get("Polluant", "")),
-            "date": str(row.get("Date de début", "") or row.get("Date", "")),
-            "concentration": float(row.get("valeur", 0)) if pd.notna(row.get("valeur")) else None,
-            "unite": str(row.get("Unité de mesure", "")),
+            "code_station": str(code_station),
+            "nom_station": str(nom_station),
+            "nombre_mesures": len(mesures),
+            "mesures": mesures  # ← TABLEAU avec TOUS les polluants
         }
     })
 
@@ -158,7 +173,15 @@ geojson = {"type": "FeatureCollection", "features": features}
 with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
     json.dump(geojson, f, ensure_ascii=False, indent=2)
 
+print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON} ({len(features)} stations, {sum(len(f['properties']['mesures']) for f in features)} mesures)")
+
+geojson = {"type": "FeatureCollection", "features": features}
+
+with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
+    json.dump(geojson, f, ensure_ascii=False, indent=2)
+
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON} ({len(features)} points)")
+
 
 
 
