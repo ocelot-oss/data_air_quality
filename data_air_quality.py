@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import io
 import json
-from datetime import timezone, timedelta
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 # === CONFIG ===
@@ -61,6 +61,7 @@ def download_csv(url):
 # ============ LOGIQUE PRINCIPALE ============
 
 # Chercher le fichier le plus récent
+from datetime import timezone
 target_date = datetime.now(timezone.utc).date() - timedelta(days=1)
 print(f"\n🔍 Recherche du fichier pour le {target_date}")
 
@@ -216,6 +217,7 @@ with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
 
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations avec descriptions HTML complètes")
+
 
 
 
