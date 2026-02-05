@@ -162,19 +162,33 @@ for (code_station, nom_station, lat, lon), group in stations_grouped:
     # Trier par polluant (alphabétique)
     polluants_stats = sorted(polluants_stats, key=lambda x: x['polluant'])
     
-    features.append({
-        "type": "Feature",
-        "geometry": {
-            "type": "Point",
-            "coordinates": [float(lon), float(lat)]
-        },
-        "properties": {
-            "code_station": str(code_station),
-            "nom_station": str(nom_station),
-            "nb_polluants": len(polluants_stats),
-            "polluants": polluants_stats
-        }
-    })
+    # Créer une description HTML formatée pour uMap
+description_html = f"<h3>{nom_station}</h3>"
+description_html += f"<p><strong>Code:</strong> {code_station}</p>"
+description_html += f"<p><strong>{len(polluants_stats)} polluants mesurés le {polluants_stats[0]['date'] if polluants_stats else 'N/A'}:</strong></p>"
+description_html += "<table style='width:100%; border-collapse: collapse;'>"
+description_html += "<tr style='border-bottom: 1px solid #ccc;'><th>Polluant</th><th>Moy.</th><th>Max</th><th>Min</th></tr>"
+
+for p in polluants_stats:
+    description_html += f"<tr><td><strong>{p['polluant']}</strong></td><td>{p['valeur_moyenne']} {p['unite']}</td><td>{p['valeur_max']}</td><td>{p['valeur_min']}</td></tr>"
+
+description_html += "</table>"
+
+features.append({
+    "type": "Feature",
+    "geometry": {
+        "type": "Point",
+        "coordinates": [float(lon), float(lat)]
+    },
+    "properties": {
+        "name": f"{nom_station} ({code_station})",  # ← Pour l'affichage du titre
+        "description": description_html,              # ← Pour la popup
+        "code_station": str(code_station),
+        "nom_station": str(nom_station),
+        "nb_polluants": len(polluants_stats),
+        "polluants": polluants_stats
+    }
+})
 
 geojson = {"type": "FeatureCollection", "features": features}
 
@@ -184,6 +198,7 @@ with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
 total_polluants = sum(len(f['properties']['polluants']) for f in features)
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations, {total_polluants} polluants avec stats journalières")
+
 
 
 
