@@ -133,20 +133,33 @@ if df_merged.empty:
 df_merged = df_merged[df_merged['Latitude'].notna() & df_merged['Longitude'].notna()]
 print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
-# Création GeoJSON - AGRÉGATION JOURNALIÈRE PAR POLLUANT AVEC DESCRIPTION HTML
-print("\n🗺️  Création du GeoJSON...")
+# === SEUILS PAR POLLUANT (valeurs réglementaires journalières) ===
+SEUILS = {
+    "NO2": 40,   # µg/m³
+    "PM10": 50,  # µg/m³
+    "O3": 100,   # µg/m³
+}
 
+# --- Fonction pour choisir la couleur selon la valeur maximale et le seuil ---
+def couleur_polluant(valeur_max, polluant):
+    seuil = SEUILS.get(polluant, 40)  # valeur par défaut 40 si polluant inconnu
+    if valeur_max <= 0.5 * seuil:
+        return "#2ecc71"  # vert
+    elif valeur_max <= seuil:
+        return "#f1c40f"  # jaune
+    elif valeur_max <= 1.5 * seuil:
+        return "#e67e22"  # orange
+    else:
+        return "#e74c3c"  # rouge
+
+# --- Grouper par station ---
 stations_grouped = df_merged.groupby(['code site', 'nom site', 'Latitude', 'Longitude'])
-
 features = []
 
 for (code_station, nom_station, lat, lon), group in stations_grouped:
-    # Grouper par polluant et calculer moyenne + max
     polluants_stats = []
-    
     for polluant, polluant_data in group.groupby('Polluant'):
         valeurs = polluant_data['valeur'].dropna()
-        
         if len(valeurs) > 0:
             polluants_stats.append({
                 "polluant": str(polluant),
@@ -157,66 +170,73 @@ for (code_station, nom_station, lat, lon), group in stations_grouped:
                 "unite": str(polluant_data['unité de mesure'].iloc[0]) if pd.notna(polluant_data['unité de mesure'].iloc[0]) else "µg/m3",
                 "date": str(polluant_data['Date de début'].iloc[0])[:10] if pd.notna(polluant_data['Date de début'].iloc[0]) else "N/A"
             })
-    
-    # Trier par polluant (alphabétique)
-    polluants_stats = sorted(polluants_stats, key=lambda x: x['polluant'])
-    
-    # Créer la description HTML complète
-    date_mesure = polluants_stats[0]['date'] if polluants_stats else 'N/A'
-    
+
+    if not polluants_stats:
+        continue
+
+    # --- Choisir la couleur selon le polluant le plus critique ---
+    couleur = "#2c3e50"  # bleu foncé par défaut
+    for p in polluants_stats:
+        couleur_candidate = couleur_polluant(p['valeur_max'], p['polluant'])
+        # On garde la couleur la plus “critique” (rouge > orange > jaune > vert)
+        ordre = {"#2ecc71":1, "#f1c40f":2, "#e67e22":3, "#e74c3c":4}
+        if ordre[couleur_candidate] > ordre.get(couleur,0):
+            couleur = couleur_candidate
+
+    # --- Créer la popup HTML ---
     description = f"""<div style="font-family: Arial, sans-serif;">
-<h3 style="margin: 0 0 10px 0; color: #2c3e50;">{nom_station}</h3>
-<p style="margin: 5px 0;"><strong>Code station:</strong> {code_station}</p>
-<p style="margin: 5px 0;"><strong>Date:</strong> {date_mesure}</p>
-<p style="margin: 10px 0 5px 0;"><strong>{len(polluants_stats)} polluants mesurés:</strong></p>
-<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+<h3 style="margin:0 0 10px 0; color:#2c3e50;">{nom_station}</h3>
+<p style="margin:5px 0;"><strong>Code station:</strong> {code_station}</p>
+<p style="margin:5px 0;"><strong>Date:</strong> {polluants_stats[0]['date']}</p>
+<p style="margin:10px 0 5px 0;"><strong>{len(polluants_stats)} polluants mesurés :</strong></p>
+<table style="width:100%; border-collapse: collapse; font-size:13px;">
 <thead>
-<tr style="background: #ecf0f1; border-bottom: 2px solid #bdc3c7;">
-<th style="padding: 8px; text-align: left;">Polluant</th>
-<th style="padding: 8px; text-align: center;">Moyenne</th>
-<th style="padding: 8px; text-align: center;">Max</th>
-<th style="padding: 8px; text-align: center;">Min</th>
+<tr style="background:#ecf0f1; border-bottom:2px solid #bdc3c7;">
+<th style="padding:8px; text-align:left;">Polluant</th>
+<th style="padding:8px; text-align:center;">Moyenne</th>
+<th style="padding:8px; text-align:center;">Max</th>
+<th style="padding:8px; text-align:center;">Min</th>
 </tr>
 </thead>
 <tbody>
 """
-    
     for p in polluants_stats:
-        # Nettoyer l'unité (enlever le caractère bizarre)
-        unite_clean = p['unite'].replace('Âµ', 'µ').replace('Ã', '')
-        
-        description += f"""<tr style="border-bottom: 1px solid #ecf0f1;">
-<td style="padding: 6px;"><strong>{p['polluant']}</strong></td>
-<td style="padding: 6px; text-align: center;">{p['valeur_moyenne']} {unite_clean}</td>
-<td style="padding: 6px; text-align: center;">{p['valeur_max']}</td>
-<td style="padding: 6px; text-align: center;">{p['valeur_min']}</td>
+        unite_clean = p['unite'].replace('Âµ','µ').replace('Ã','')
+        description += f"""<tr style="border-bottom:1px solid #ecf0f1;">
+<td style="padding:6px;"><strong>{p['polluant']}</strong></td>
+<td style="padding:6px; text-align:center;">{p['valeur_moyenne']} {unite_clean}</td>
+<td style="padding:6px; text-align:center;">{p['valeur_max']} {unite_clean}</td>
+<td style="padding:6px; text-align:center;">{p['valeur_min']} {unite_clean}</td>
 </tr>
 """
-    
     description += """</tbody>
 </table>
-<p style="margin: 10px 0 0 0; font-size: 11px; color: #7f8c8d;">Source: ATMO Auvergne-Rhône-Alpes</p>
+<p style="margin:10px 0 0 0; font-size:11px; color:#7f8c8d;">Source: ATMO Auvergne-Rhône-Alpes</p>
 </div>"""
-    
+
+    # --- Ajouter la feature GeoJSON ---
     features.append({
-        "type": "Feature",
-        "geometry": {
-            "type": "Point",
-            "coordinates": [float(lon), float(lat)]
-        },
-        "properties": {
-            "name": f"{nom_station}",
-            "description": description
+        "type":"Feature",
+        "geometry":{"type":"Point","coordinates":[float(lon), float(lat)]},
+        "properties":{
+            "name":nom_station,
+            "description":description,
+            "marker-color":couleur,
+            "marker-symbol":"circle"
         }
     })
 
-geojson = {"type": "FeatureCollection", "features": features}
+# --- Sauvegarde GeoJSON ---
+geojson = {"type":"FeatureCollection","features":features}
+with open(OUTPUT_GEOJSON,"w",encoding="utf-8") as f:
+    json.dump(geojson,f,ensure_ascii=False, indent=2)
 
-with open(OUTPUT_GEOJSON, "w", encoding="utf-8") as f:
-    json.dump(geojson, f, ensure_ascii=False, indent=2)
+print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON} avec {len(features)} stations")
+
 
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations avec descriptions HTML complètes")
+
 
 
 
