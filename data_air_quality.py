@@ -141,6 +141,21 @@ if df_merged.empty:
 df_merged = df_merged[df_merged['Latitude'].notna() & df_merged['Longitude'].notna()]
 print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
+# Convertir la colonne 'valeur' en float, gérer les erreurs
+df_merged['valeur'] = (
+    df_merged['valeur']
+    .astype(str)                 # convertir tout en string
+    .str.replace(',', '.', regex=False)  # remplacer virgule par point
+    .str.strip()                 # enlever espaces invisibles
+)
+
+df_merged['valeur'] = pd.to_numeric(df_merged['valeur'], errors='coerce')  # NaN si non convertible
+
+# Filtrer les valeurs non numériques
+df_merged = df_merged[df_merged['valeur'].notna()]
+print(f"✅ {len(df_merged)} lignes après conversion numérique de 'valeur'")
+
+
 # === SEUILS PAR POLLUANT ===
 SEUILS = {
     "NO2": 40,
@@ -239,6 +254,7 @@ with open(OUTPUT_GEOJSON,"w",encoding="utf-8") as f:
 
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations avec descriptions HTML complètes")
+
 
 
 
