@@ -40,12 +40,12 @@ def download_csv(url):
         
         if r.status_code == 200 and len(r.content) > 100:
             
-            # 🔎 Détection automatique encodage
+            # Détection encodage
             detected = chardet.detect(r.content)
             encoding = detected['encoding']
             print(f"Encodage détecté : {encoding}")
             
-            # Lecture propre avec encodage détecté
+            # Lecture encodage 
             df = pd.read_csv(
                 io.BytesIO(r.content),
                 sep=";",
@@ -53,7 +53,7 @@ def download_csv(url):
                 engine="python"
             )
             
-            # Nettoyage simple des noms de colonnes
+            # Nettoyage des noms de colonnes
             df.columns = df.columns.str.strip()
             
             print(f"✅ CSV parsé : {len(df)} lignes, {len(df.columns)} colonnes")
@@ -75,7 +75,7 @@ print(f"\n🔍 Recherche du fichier pour le {target_date}")
 
 df_measures = download_csv(build_e2_url(datetime.combine(target_date, datetime.min.time())))
 
-# Retry sur les jours précédents si nécessaire
+# Reessayer sur les jours précédents si nécessaire
 tries = 5
 i = 1
 while df_measures.empty and i < tries:
@@ -113,7 +113,7 @@ if df_measures.empty:
     print("❌ Aucune donnée après filtrage des polluants")
     exit(1)
 
-# Lire stations locales (inchangé)
+# Lire stations locales 
 print(f"\n📍 Chargement du fichier stations : {STATIONS_CSV}")
 try:
     df_stations = pd.read_csv(STATIONS_CSV, sep=";")
@@ -122,7 +122,7 @@ except Exception as e:
     print(f"❌ Erreur lecture stations.csv : {e}")
     exit(1)
 
-# Merge mesures + coords
+# Fusion mesures + coords
 print("\n🔗 Merge des données...")
 df_merged = df_measures.merge(
     df_stations,
@@ -141,7 +141,7 @@ if df_merged.empty:
 df_merged = df_merged[df_merged['Latitude'].notna() & df_merged['Longitude'].notna()]
 print(f"✅ Merge réussi : {len(df_merged)} lignes avec coordonnées")
 
-# Convertir la colonne 'valeur' en float, gérer les erreurs
+# Convertir la colonne 'valeur' en float
 df_merged['valeur'] = (
     df_merged['valeur']
     .astype(str)                 # convertir tout en string
@@ -254,6 +254,7 @@ with open(OUTPUT_GEOJSON,"w",encoding="utf-8") as f:
 
 print(f"✅ GeoJSON généré : {OUTPUT_GEOJSON}")
 print(f"   {len(features)} stations avec descriptions HTML complètes")
+
 
 
 
